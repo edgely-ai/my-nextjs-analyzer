@@ -1,103 +1,146 @@
-import Image from "next/image";
+"use client"; // Required for browser-based PDF parsing & state
 
+import React, { useState } from "react";
+import { useDropzone } from "react-dropzone";
+import pdfjsLib from "pdfjs-dist/build/pdf";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.js";
+ 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [files, setFiles] = useState<File[]>([]);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const { getRootProps, getInputProps } = useDropzone({
+    accept: { "application/pdf": [".pdf"] },
+    onDrop: (acceptedFiles) => setFiles(acceptedFiles),
+  });
+
+  // Extract text from PDF
+  async function extractTextFromPDF(file: File): Promise<string> {
+    try {
+      // 1) Convert File → ArrayBuffer → Uint8Array
+      const arrayBuffer = await file.arrayBuffer();
+      const typedArray = new Uint8Array(arrayBuffer);
+
+      // 2) Pass the data to pdf.js
+      const loadingTask = pdfjsLib.getDocument({ data: typedArray });
+      const pdf = await loadingTask.promise; // PDFDocumentProxy
+
+      // 3) Loop through pages and extract text
+      let text = "";
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent(); // TextContent
+        text += content.items.map((item) => item.str).join(" ");
+      }
+      return text;
+    } catch (error) {
+      console.error("PDF parse error:", error);
+      return ""; // Return empty string if something fails
+    }
+  }
+
+  // Basic sanitization
+  const sanitizeText = (input: string): string => {
+    return input
+      .replace(/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, "[REDACTED]")
+      .replace(/\b[A-Z]{2}\d{2} [A-Z0-9]{4} \d{4} \d{4} \d{4}\b/g, "[REDACTED]")
+      .replace(/\b\d{2}-\d{2}-\d{2}\b/g, "[REDACTED]")
+      .replace(/\b\d{10,}\b/g, "[REDACTED]");
+  };
+
+  // Summarize
+  const handleSummarize = async () => {
+    if (!files.length) return;
+    setProcessing(true);
+    setError(null);
+    setSummary(null);
+
+    try {
+      // 1) Extract & sanitize text
+      let combinedText = "";
+      for (const file of files) {
+        const raw = await extractTextFromPDF(file);
+        const sanitized = sanitizeText(raw);
+        combinedText += `File: ${file.name}\n${sanitized}\n\n`;
+      }
+
+      if (!combinedText.trim()) {
+        setError("No text found to summarize.");
+        setProcessing(false);
+        return;
+      }
+
+      // 2) Post to our serverless route
+      const res = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: combinedText }),
+      });
+      if (!res.ok) {
+        throw new Error(`Request failed: ${res.statusText}`);
+      }
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setSummary(data.summary || "No summary found");
+      }
+    } catch (e: unknown) {
+      console.error(e);
+       if (e instanceof Error) {
+         setError(e.message);
+       } else {
+         setError("Unexpected error occurred.");
+       }
+    }
+
+    setProcessing(false);
+  };
+
+  return (
+    <main className="max-w-2xl mx-auto p-6 mt-8">
+      <h1 className="text-2xl font-bold mb-4">Bank Statement Analyzer</h1>
+
+      {/* PDF Dropzone */}
+      <div
+        {...getRootProps()}
+        className="border-2 border-dashed p-4 text-center rounded cursor-pointer"
+      >
+        <input {...getInputProps()} />
+        <p>Drag & drop PDFs or click to select</p>
+      </div>
+
+      {/* File List */}
+      <ul className="mt-4">
+        {files.map((file) => (
+          <li key={file.name} className="text-gray-700">
+            {file.name}
+          </li>
+        ))}
+      </ul>
+
+      {/* Button */}
+      <button
+        onClick={handleSummarize}
+        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+        disabled={processing || !files.length}
+      >
+        {processing ? "Processing..." : "Generate Balance Sheet"}
+      </button>
+
+      {/* Error */}
+      {error && <p className="text-red-500 mt-4">{error}</p>}
+
+      {/* Summary */}
+      {summary && (
+        <div className="mt-6 p-4 bg-gray-100 rounded">
+          <h2 className="font-semibold mb-2">AI-Generated Summary</h2>
+          <pre className="whitespace-pre-wrap">{summary}</pre>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      )}
+    </main>
   );
 }
