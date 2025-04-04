@@ -9,19 +9,28 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@google/genai": "^0.7.0",
+    "@google/generative-ai": "^0.24.0",
+    "framer-motion": "^12.6.3",
+    "libxmljs2": "^0.35.0",
     "next": "15.2.4",
-    "openai": "^4.89.1",
+    "openai": "^4.91.1",
     "pdfjs-dist": "^5.0.375",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-dropzone": "^14.3.8"
+    "react-dropzone": "^14.3.8",
+    "react-toastify": "^11.0.5",
+    "xlsx": "^0.18.5",
+    "xmlbuilder2": "^3.1.1",
+    "xmllint-wasm": "^4.0.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^20.17.30",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/xlsx": "^0.0.35",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
     "tailwindcss": "^4",

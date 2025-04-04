@@ -1,58 +1,41 @@
+// types/pdfjs-dist.d.ts
 declare module "pdfjs-dist/build/pdf" {
-  /** Parameters for getDocument() */
+  // 1. Worker options
+  interface PDFWorkerOptions {
+    workerSrc: string;
+  }
+
+  // 2. Document parameters
   interface GetDocumentParams {
-    /** Either a URL or raw PDF data */
-    url?: string;
     data?: Uint8Array;
+    url?: string;
   }
 
-  /** A loading task that resolves to a PDFDocumentProxy */
-  interface PDFDocumentLoadingTask {
-    promise: Promise<PDFDocumentProxy>;
-  }
-
-  /** A basic PDF Document interface */
+  // 3. Document proxy with pages
   interface PDFDocumentProxy {
     numPages: number;
-    getPage: (pageNumber: number) => Promise<PDFPageProxy>;
-    // You can add more methods if you need them
+    getPage(pageNumber: number): Promise<PDFPageProxy>;
   }
 
-  /** A basic PDF Page interface */
+  // 4. Page proxy with text content
   interface PDFPageProxy {
-    getTextContent: () => Promise<TextContent>;
-    // Add more if needed
+    getTextContent(): Promise<TextContent>;
   }
 
-  /** The text content returned by getTextContent() */
+  // 5. Text content
   interface TextContent {
     items: TextItem[];
   }
 
-  /** Each item in the text layer */
+  // 6. Text item
   interface TextItem {
     str: string;
-    // Possibly more properties, e.g. fontName, transform, etc.
   }
 
-  /** The global worker options. We only really set `workerSrc` */
-  interface PDFJSWorkerOptions {
-    workerSrc: string;
-  }
+  // 7. The main library exports
+  export const GlobalWorkerOptions: PDFWorkerOptions;
 
-  /** The root object exported by pdfjs-dist. */
-  interface PDFJSStatic {
-    GlobalWorkerOptions: PDFJSWorkerOptions;
-    version: string;
-    getDocument: (args: GetDocumentParams | string) => PDFDocumentLoadingTask;
-  }
-
-  const pdfjsLib: PDFJSStatic;
-  export default pdfjsLib;
-}
-
-declare module "pdfjs-dist/build/pdf.worker.entry" {
-  // Typically no need to export anything
-  const workerEntry: unknown;
-  export default workerEntry;
+  export function getDocument(src: GetDocumentParams | string): {
+    promise: Promise<PDFDocumentProxy>;
+  };
 }
